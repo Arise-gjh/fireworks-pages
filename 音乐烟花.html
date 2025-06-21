@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>烟花与音乐</title>
+  <style>
+    body, html { margin: 0; height: 100%; overflow: hidden; background: #000; }
+    #canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+    .btn-container { position: fixed; bottom: 40px; left: 0; width: 100%; display: flex; justify-content: center; z-index: 100; }
+    .jump-btn { padding: 14px 30px; font-size: 16px; background: rgba(255,255,255,0.2); color: white; border: 1px solid white; border-radius: 30px; cursor: pointer; transition: all 0.3s; }
+    .jump-btn:hover { background: rgba(255,255,255,0.4); transform: scale(1.05); }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div class="btn-container">
+    <button class="jump-btn" onclick="jumpToKugou()">跳转播放《Take Me Hand》</button>
+  </div>
+
+  <script>
+    // 烟花效果核心代码
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+
+    class Particle {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.size = Math.random() * 4 + 1;
+        this.speedX = Math.random() * 3 - 1.5;
+        this.speedY = Math.random() * 3 - 1.5;
+        this.color = `hsl(${Math.random() * 360}, 100%, 60%)`;
+        this.alpha = 1;
+        this.trail = [];
+        this.maxTrail = 5;
+      }
+
+      update() {
+        this.x += this.speedX;
+        this.y += this.speedY;
+        this.size *= 0.98;
+        this.alpha *= 0.95;
+        
+        // 记录轨迹
+        this.trail.push({x: this.x, y: this.y});
+        if (this.trail.length > this.maxTrail) {
+          this.trail.shift();
+        }
+        
+        // 边界检测
+        if (this.size < 0.5) this.alpha = 0;
+        if (this.x < 0 || this.x > canvas.width || this.y < 0 || this.y > canvas.height) {
+          this.alpha = 0;
+        }
+      }
+
+      draw() {
+        ctx.beginPath();
+        // 绘制轨迹
+        if (this.trail.length > 1) {
+          ctx.moveTo(this.trail[0].x, this.trail[0].y);
+          for (let i = 1; i < this.trail.length; i++) {
+            ctx.lineTo(this.trail[i].x, this.trail[i].y);
+          }
+          ctx.strokeStyle = `rgba(${this.getRGB(this.color)}, ${this.alpha * 0.5})`;
+          ctx.lineWidth = this.size / 2;
+          ctx.stroke();
+        }
+        
+        // 绘制粒子
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${this.getRGB(this.color)}, ${this.alpha})`;
+        ctx.fill();
+      }
+
+      getRGB(hslColor) {
+        const match = hslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+        if (match) {
+          const h = parseInt(match[1]), s = parseInt(match[2])/100, l = parseInt(match[3])/100;
+          const c = (1 - Math.abs(2*l - 1)) * s;
+          const x = c * (1 - Math.abs((h/60)%2 - 1));
+          const m = l - c/2;
+          let r, g, b;
+          
+          if (h >= 0 && h < 60) { r = c; g = x; b = 0; }
+          else if (h >= 60 && h < 120) { r = x; g = c; b = 0; }
+          else if (h >= 120 && h < 180) { r = 0; g = c; b = x; }
+          else if (h >= 180 && h < 240) { r = 0; g = x; b = c; }
+          else if (h >= 240 && h < 300) { r = x; g = 0; b = c; }
+          else { r = c; g = 0; b = x; }
+          
+          return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)].join(',');
+        }
+        return '255,255,255';
+      }
+    }
+
+    class Firework {
+      constructor() {
+        this.x = Math.random() * canvas.width;
+        this.y = canvas.height;
+        this.size = 2;
+        this.speedX = Math.random() * 3 - 1.5;
+        this.speedY = Math.random() * 10 + 5;
+        this.color = `hsl(${Math.random() * 360}, 100%, 60%)`;
+        this.particles = [];
+        this.exploded = false;
+      }
+
+      update() {
+        if (!this.exploded) {
+          this.x += this.speedX;
+          this.y -= this.speedY;
+          this.size *= 0.95;
+          
+          // 爆炸条件
+          if (this.y < canvas.height * 0.3 || this.size < 0.5) {
+            this.explode();
+          }
+        } else {
+          for (let i = this.particles.length - 1; i >= 0; i--) {
+            this.particles[i].update();
+            if (this.particles[i].alpha <= 0) {
+              this.particles.splice(i, 1);
+            }
+          }
+          
+          // 粒子数量为0时重置
+          if (this.particles.length === 0) {
+            this.reset();
+          }
+        }
+      }
+
+      explode() {
+        this.exploded = true;
+        const particleCount = Math.floor(Math.random() * 50) + 30;
+        for (let i = 0; i < particleCount; i++) {
+          this.particles.push(new Particle(this.x, this.y));
+        }
+      }
+
+      reset() {
+        this.x = Math.random() * canvas.width;
+        this.y = canvas.height;
+        this.size = 2;
+        this.speedX = Math.random() * 3 - 1.5;
+        this.speedY = Math.random() * 10 + 5;
+        this.color = `hsl(${Math.random() * 360}, 100%, 60%)`;
+        this.exploded = false;
+        this.particles = [];
+      }
+
+      draw() {
+        if (!this.exploded) {
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+          ctx.fillStyle = this.color;
+          ctx.fill();
+        } else {
+          this.particles.forEach(particle => particle.draw());
+        }
+      }
+    }
+
+    const fireworks = [];
+    for (let i = 0; i < 10; i++) {
+      fireworks.push(new Firework());
+    }
+
+    function animate() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      fireworks.forEach(firework => {
+        firework.update();
+        firework.draw();
+      });
+      requestAnimationFrame(animate);
+    }
+    animate();
+
+    // 跳转酷狗音乐小程序核心代码
+    function jumpToKugou() {
+      if (typeof wx !== 'undefined' && wx.navigateToMiniProgram) {
+        wx.navigateToMiniProgram({
+          appId: 'wxe123456789abcdef', // 酷狗音乐小程序AppID
+          path: 'pages/songPlay/songPlay?mid=9aqZT11EqV2', // 替换为实际歌曲mid
+          success: () => console.log('跳转成功'),
+          fail: (err) => {
+            console.error('跳转失败', err);
+            alert('请在微信内打开此页面后重试~');
+          }
+        });
+      } else {
+        alert('当前环境不支持跳转微信小程序，请在微信中打开');
+      }
+    }
+  </script>
+</body>
+</html>
